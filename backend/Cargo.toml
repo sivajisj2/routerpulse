@@ -1,14 +1,25 @@
 [package]
 name = "routerpulse-api"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+publish = false
 
 [dependencies]
-axum = "0.8"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
-tower-http = { version = "0.6", features = ["cors", "trace"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+anyhow = "=1.0.98"
+axum = "=0.8.4"
+bs58 = "=0.5.1"
+chrono = { version = "=0.4.41", features = ["serde"] }
+futures = "=0.3.31"
+hex = "=0.4.3"
+reqwest = { version = "=0.12.22", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "=1.0.219", features = ["derive"] }
+serde_json = "=1.0.140"
+sha2 = "=0.10.9"
+sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+subtle = "=2.6.1"
+tokio = { version = "=1.45.1", features = ["macros", "rt-multi-thread", "net", "signal", "time"] }
+tower-http = { version = "=0.6.6", features = ["cors", "trace", "request-id"] }
+tracing = "=0.1.41"
+tracing-subscriber = { version = "=0.3.19", features = ["env-filter", "fmt", "json"] }
+uuid = { version = "=1.17.0", features = ["serde"] }
 
