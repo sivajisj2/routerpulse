@@ -9,7 +9,7 @@
 ./scripts/down.sh
 ```
 
-`setup.sh` creates `.env` only when absent. Compose health checks gate service startup. `up.sh` deploys contracts after the node containers start. Local deployment addresses are written to ignored `contracts/deployments/local.json`.
+`setup.sh` generates local-only `.env` credentials and keypairs under ignored `.local/` and `target/` paths. `up.sh` starts services, deploys the Anchor program only to localhost Solana RPC endpoints, and configures the source/destination domains. Never use these scripts with shared or production RPC URLs.
 
 ## Ports
 
@@ -17,17 +17,17 @@
 |---|---:|
 | Web console | 3000 |
 | API | 8080 |
-| Source Anvil | 8545 |
-| Destination Anvil | 8546 |
+| Source Solana RPC / faucet | 8899 / 9900 |
+| Destination Solana RPC / faucet | 8900 / 9901 |
 | PostgreSQL | 5433 |
 | Redis | 6379 |
 
-PostgreSQL and Redis use named Docker volumes. For a clean reset, stop the stack with `docker compose down -v`.
+PostgreSQL and Redis use named Docker volumes. For a destructive local reset, run `docker compose down -v` after stopping services.
 
 ## Troubleshooting
 
-- If contract deployment fails, confirm both Anvil endpoints respond and Foundry is installed.
-- If a port is busy, stop the existing service or edit the corresponding Compose port mapping.
-- If a database volume predates a migration change, recreate only local state with `docker compose down -v` then start again.
-- API records are in memory and disappear when the API container restarts.
-
+- If deployment fails, confirm both local RPC endpoints report healthy and Anchor/Solana CLI versions match `Anchor.toml`.
+- If the program ID changed after key generation, rerun `anchor keys sync` and rebuild before deployment.
+- If a port is busy, edit the relevant Compose port mapping.
+- If a local database volume predates a migration change, remove local volumes and restart; this deletes local data.
+- Message APIs stay empty until the not-yet-implemented scanner persists Anchor event observations.

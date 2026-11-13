@@ -2,13 +2,14 @@
 .env.*
 !.env.example
 target/
-out/
-cache/
+Anchor.toml.bak
+programs/routerpulse/src/id.rs.bak
 node_modules/
 dist/
 coverage/
 *.log
 .DS_Store
+.local/
 deployments/*.local.json
 
 

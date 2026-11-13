@@ -1,37 +1,29 @@
 # API reference
 
-The API currently exposes a small authenticated scaffold. It does not yet read chain logs or persist messages.
+The API provides authenticated operator views over PostgreSQL and read-only Solana RPC health checks. It does not yet scan Anchor logs or submit destination transactions.
 
 ## Authentication
 
-Operator requests must send `x-api-key`. `/livez` and `/readyz` are public health endpoints. Configure the local key in `.env`; never commit `.env`.
+Operator endpoints require `x-api-key`. `/livez` and `/readyz` are public. Local credentials are generated into `.env`; do not commit them. API keys must have at least 24 bytes unless `ALLOW_WEAK_LOCAL_API_KEY=true` is explicitly used for local development.
 
-## Routes
+## Endpoints
 
-| Method | Path | Auth | Result |
+| Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/livez` | No | `ok` |
-| GET | `/readyz` | No | `{"status":"ready"}` |
-| GET | `/api/v1/chains` | Yes | Two local chain descriptors |
-| GET | `/api/v1/messages` | Yes | `{ "items": [], "total": 0 }` |
-| GET | `/api/v1/messages/{id}` | Yes | Message record or 404 |
-| POST | `/api/v1/messages` | Yes | Idempotently register a message in process memory |
+| GET | `/livez` | No | Process liveness |
+| GET | `/readyz` | No | Database readiness |
+| GET | `/api/v1/clusters` | Yes | Genesis hash, domain hash, current slot, RPC health |
+| GET | `/api/v1/routes` | Yes | Configured route records |
+| GET | `/api/v1/messages` | Yes | Persisted messages; supports `status`, `limit` (max 200), and `before` cursor |
+| GET | `/api/v1/messages/{id}` | Yes | One 32-byte message ID, hex encoded |
+| GET | `/api/v1/relayer/health` | Yes | Relayer heartbeat/readiness; worker is not implemented yet |
 
-### Register a message record
+Example:
 
-```http
-POST /api/v1/messages
-x-api-key: local-demo-key-change-me
-Content-Type: application/json
-
-{
-  "message_id": "0xexample",
-  "source_chain_id": 31337,
-  "destination_chain_id": 31338,
-  "sender": "0x...",
-  "receiver": "0x..."
-}
+```bash
+curl -H "x-api-key: $(sed -n 's/^API_KEY=//p' .env)" http://localhost:8080/api/v1/clusters
 ```
 
-The response contains the message and `replayed`. Repeating the same `message_id` returns the existing record. This is only an API idempotency demonstration; it does not create an on-chain message or submit a transaction.
+Message fields use Solana signatures and slots. A sequence is an application-level sender sequence stored by the Anchor program; it is not a Solana transaction nonce. The API returns empty message lists until an event scanner writes records.
 
+Errors use JSON `{ "code": "...", "message": "..." }`. Responses include `x-request-id` for log correlation.

@@ -1,14 +1,11 @@
 # Roadmap
 
-- [x] Repository foundation and local two-chain Compose topology
-- [x] Source and destination router contracts with a permissioned relayer signature
-- [x] Authenticated Rust API scaffold and operator console
-- [x] Initial PostgreSQL schema and local contract deployment script
-- [ ] Contract unit, fuzz, and invariant coverage
-- [ ] SQLx repositories, transactional state transitions, and audit event persistence
-- [ ] Alloy log scanner, confirmation gates, and source reorg detection
-- [ ] Redis stream/lease worker and signer boundary
-- [ ] Destination simulation, transaction submission, and receipt reconciliation
-- [ ] Real-time metrics, tracing dashboards, and useful UI screenshots
-- [ ] Full clean-checkout integration smoke coverage and CI release pipeline
-
+- [x] Solana + Anchor foundation with PDA configuration, sequencing, message accounts, and replay protection
+- [x] Dual local Solana validators, PostgreSQL schema, authenticated Rust API, and Solana operator console
+- [ ] Anchor unit, integration, adversarial, and invariant coverage
+- [ ] SQLx repositories and transactional state transitions with audit persistence
+- [ ] Anchor event scanner with signature, slot, commitment, and source reorg reconciliation
+- [ ] Durable worker leases, outbox dispatch, and isolated signer boundary
+- [ ] Destination simulation, blockhash lifetime tracking, submission, and signature reconciliation
+- [ ] Live message feed, metrics, dashboards, backup/restore, and CI release workflow
+- [ ] Independent security review before any shared or production deployment

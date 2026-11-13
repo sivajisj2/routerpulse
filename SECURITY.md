@@ -6,6 +6,5 @@ relayer signer. RPC providers may be stale or inconsistent, and confirmation
 depth does not eliminate reorg risk.
 
 Do not submit real secrets in issues. Report suspected vulnerabilities privately
-to the repository owner. Never use the local Anvil development keys outside
-local development.
+to the repository owner. Never use local validator keys outside local development.
 
