@@ -1,122 +1,127 @@
 # RouterPulse
 
-**A local-first cross-chain router and relayer operations console** built with Solidity, Foundry, Rust/Axum, React, PostgreSQL, Redis, and Docker Compose.
+**Solana cross-cluster message routing and relayer operations** using Rust, Anchor 0.30, Solana RPC, PostgreSQL, Redis infrastructure, and a React operator console.
 
-> Portfolio engineering project. The current release is an early foundation, not an audited bridge or production-ready relayer. It does not provide trustless verification, guaranteed delivery, or mainnet execution.
+> Portfolio and local-development software. The relayer is permissioned. RouterPulse is not a trustless bridge, has not been independently audited, does not custody tokens, and is not approved for mainnet use.
 
-## What works in this foundation
+## Design
 
-- Source router with sender and destination allowlists, bounded payloads, expiry, nonces, deterministic message IDs, and message commitments.
-- Destination router with trusted-source configuration, EIP-712 domain separation, a permissioned relayer signature, expiry checks, replay protection, pause control, and receiver callback execution.
-- Relayer registry for owner-configured operators and destination permissions.
-- Rust/Axum operator API with health endpoints, API-key boundary, chain metadata, and idempotent in-memory message registration.
-- React operations console with localnet warning, overview metrics, throughput chart, route status, message search, and review timeline.
-- PostgreSQL schema foundation, Redis, two local Anvil services, container builds, and local deployment scripts.
+RouterPulse sends an application message from one Solana cluster, waits for source finality, and lets a configured relayer attest to the source observation on a second cluster. The destination program validates the cluster/program domain, recomputes the canonical message ID, and creates a replay-protected processed-message PDA.
 
-## Not implemented yet
+Two local Solana test validators stand in for independent clusters. Each cluster domain is SHA-256 over `ROUTERPULSE_CLUSTER_V1 || genesis_hash_bytes || ":" || configured_label`. The label keeps local source and destination identities distinct even when validator genesis parameters happen to match.
 
-The current API does not yet use PostgreSQL or Redis. There is no Alloy scanner, confirmation watcher, reorg reconciliation, worker lease, durable retry policy, or destination transaction submission worker. The dashboard contains clearly labeled demo metrics when the API has no messages. The API's in-memory records reset when the container restarts. Do not interpret sample route health or throughput as live chain telemetry.
+### Anchor program
 
-## Architecture
+The Anchor program exposes `initialize`, `register_remote`, `update_remote`, `set_relayer`, `set_paused`, `send_message`, and `execute_attested_message`.
 
-```mermaid
-flowchart LR
-  UI[React operator console] --> API[Rust Axum API]
-  API --> DB[(PostgreSQL schema)]
-  API --> Q[(Redis service)]
-  SRC[Source Anvil] --> SR[SourceRouter]
-  DST[Destination Anvil] --> DR[DestinationRouter]
-  API -. future event scanner .-> SRC
-  API -. future submit worker .-> DST
-```
+| PDA | Seeds | Purpose |
+|---|---|---|
+| `RouterConfig` | `config` | Authority, relayer, local cluster domain, pause state |
+| `RemoteConfig` | `remote`, domain hash, remote program | Trusted remote cluster/program and enable flag |
+| `SenderSequence` | `sender`, sender pubkey | Application-level per-sender sequence |
+| `MessageAccount` | `message`, sender pubkey, sequence LE | Source message and bounded payload |
+| `ProcessedMessage` | `processed`, canonical message ID | Destination replay protection |
 
-The initial proof model trusts a single configured relayer signer. A valid signature only proves that the configured signer approved a message; it is not a trustless cross-chain proof.
+The sequence PDA is application-level idempotency and ordering for a sender. Solana transaction identity and reconciliation use signatures, recent blockhashes, slots, and commitment levels.
 
-## Quick start
+The destination instruction records an execution receipt and emits an event. It does not invoke arbitrary receiver programs or transfer tokens. Add application-specific CPI and asset custody only after a separate threat model and review.
 
-Prerequisites: Docker Compose v2, Foundry (`forge` and `cast`).
+## Current implementation status
+
+- Anchor program: PDA configuration, remote allowlists, sender sequence, bounded message payload, expiry validation, canonical domain-separated IDs, relayer-gated destination receipt, and duplicate-execution prevention.
+- Rust/Axum API: API-key boundary with constant-time comparison, PostgreSQL migrations, message/route queries, request IDs, graceful shutdown, and Solana RPC health checks.
+- Database: clusters, routes, messages, source observations, attempts, audit transitions, idempotency keys, outbox, and relayer heartbeats.
+- Console: Solana cluster slots, signatures, message status, source finality, route health, and review timeline. Demo rows are illustrative until a scanner feeds the database.
+- Local infrastructure: source/destination `solana-test-validator`, PostgreSQL, Redis, API, and Nginx-served UI.
+
+The event scanner, durable worker lease loop, automatic source-reorg reconciliation, destination transaction submission, and live database-to-console feed are still roadmap work. The database schema is ready for those services, but a provisioned Redis container is not yet used by the API.
+
+## Local quick start
+
+Prerequisites: Docker Compose v2, Solana CLI 1.18.26, Anchor 0.30.1, Rust, Node.js 24, npm, and Python 3.
 
 ```bash
 ./scripts/setup.sh
 ./scripts/up.sh
+./scripts/smoke.sh
 ```
 
-The startup script creates `.env` if needed, starts both Anvil chains, PostgreSQL, Redis, the API, and the web console, then deploys the router contracts to both local chains. It uses only deterministic, publicly known Anvil test keys. Never reuse them on a real network.
+`setup.sh` creates a private `.env`, random local operator and relayer keypairs under `.local/`, and a local Anchor program keypair under `target/`. Those paths are ignored by Git. Anchor sync updates the public program ID in `Anchor.toml` and `programs/routerpulse/src/lib.rs`; review and commit your own program ID only when you intend to use it in your fork.
+
+`up.sh` starts both test validators and supporting services, builds and deploys the Anchor program to localhost RPC endpoints only, then initializes each cluster config and registers the trusted remote program. The deployment script refuses non-local RPC URLs.
 
 Open:
 
 - Console: <http://localhost:3000>
 - API readiness: <http://localhost:8080/readyz>
-- Source JSON-RPC: <http://localhost:8545> (chain `31337`)
-- Destination JSON-RPC: <http://localhost:8546> (chain `31338`)
+- Source validator RPC: <http://localhost:8899>
+- Destination validator RPC: <http://localhost:8900>
+- PostgreSQL: `localhost:5433`
+- Redis: `localhost:6379`
 
-The local operator API key is `local-demo-key-change-me`. Change it in `.env` before exposing the API beyond your machine. Connect it in the console using the key icon in the bottom-right corner.
-
-Stop services with `./scripts/down.sh`. To remove local database and Redis data too, use `docker compose down -v`.
+The API key is generated into `.env`; enter it in the console's key control to connect. Stop the stack with `./scripts/down.sh`. Delete local database state with `docker compose down -v`.
 
 ## API
 
-Operator routes require the `x-api-key` header. Health checks are public.
+Operator endpoints require `x-api-key`. Health endpoints are public.
 
-| Method | Route | Purpose |
+| Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/livez` | Process liveness |
-| GET | `/readyz` | API readiness |
-| GET | `/api/v1/chains` | Local chain metadata |
-| GET | `/api/v1/messages` | List in-memory message records |
-| GET | `/api/v1/messages/{id}` | Read one message |
-| POST | `/api/v1/messages` | Idempotently register a message record |
+| GET | `/livez` | API process liveness |
+| GET | `/readyz` | Database readiness |
+| GET | `/api/v1/clusters` | Genesis/domain identity, current slot, and RPC health for both local clusters |
+| GET | `/api/v1/routes` | Configured off-chain route records |
+| GET | `/api/v1/messages` | Cursor-filterable message records (`status`, `limit`, `before`) |
+| GET | `/api/v1/messages/{id}` | One message by 32-byte hex ID |
+| GET | `/api/v1/relayer/health` | Worker readiness; scanner is not enabled yet |
 
 Example:
 
 ```bash
-curl -H 'x-api-key: local-demo-key-change-me' http://localhost:8080/api/v1/chains
+curl -H "x-api-key: $(sed -n 's/^API_KEY=//p' .env)" http://localhost:8080/api/v1/clusters
 ```
 
-The current message registration API is a learning scaffold, not a chain event ingestion endpoint. Mutations do not currently submit transactions.
-
-## Repository map
-
-```text
-contracts/       Solidity routers, registry, Foundry config, local deploy script
-backend/         Axum API and PostgreSQL schema foundation
-frontend/        React/Vite operator console and Nginx config
-scripts/         Local setup, startup, shutdown, deployment, smoke, and build commands
-docs/            Architecture, API, security, operations, and implementation roadmap
-compose.yaml     Two Anvil chains, PostgreSQL, Redis, API, and web console
-```
-
-## Development commands
+## Development
 
 ```bash
-./scripts/check.sh        # Solidity build/format, Rust lint/build, frontend build
-./scripts/smoke.sh        # API health and authentication boundary
+./scripts/check.sh
 ```
 
-## Implementation roadmap
+This formats/lints/builds the Anchor/Rust workspace and creates a production frontend bundle. Local Solana validators and end-to-end relayer behavior require separate integration coverage before they can be claimed as verified.
 
-1. **Foundation (current):** repository layout, local chains, basic contracts, API boundary, UI, and container wiring.
-2. **Contract hardening:** comprehensive unit/fuzz/invariant suite, signer rotation, domain and message-ID verification, and review of value/callback semantics.
-3. **Durable domain:** SQLx repositories, transactional state transitions, immutable audit history, and migrations.
-4. **Relayer:** Alloy event scanner, confirmation gates, source block-hash rechecks, reorg handling, Redis leases, safe simulation/submission, and receipt reconciliation.
-5. **Operator product:** real API data, route configuration, evidence view, and explicit submit/retry/reconcile workflows.
-6. **Operations:** metrics, dashboards, structured logs, backups, hardened images, integration checks, CI artifacts, and documentation screenshots.
+## Security model and boundaries
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/SECURITY.md](docs/SECURITY.md), and [docs/ROADMAP.md](docs/ROADMAP.md) for detail.
+- A destination execution is authorized by a configured relayer signer. This is an operator attestation, not a cryptographic proof of source-chain state.
+- Relayers must independently reconcile source signatures at the configured commitment and re-check slot/blockhash evidence before signing.
+- Messages expire; destination program IDs and cluster-domain hashes are bound into canonical message IDs.
+- A processed PDA prevents a second destination receipt for the same message ID.
+- Local keypairs and validator faucets are development-only. Never point the deployment script at a shared or production cluster.
+- The program does not handle SOL or SPL token custody.
+- No third-party audit has been performed.
 
-## Security and limitations
+See [docs/SECURITY.md](docs/SECURITY.md) and [SECURITY.md](SECURITY.md).
 
-- Permissioned relayer signature: trusted signer can approve false messages.
-- RPC observations can be delayed, inconsistent, censored, or unavailable.
-- Confirmation depth reduces but cannot remove reorg risk.
-- Redis coordination is not authorization, and database records are not proof of finality.
-- Destination callback failures revert execution; review gas, value, and callback policy before any extension.
-- Local Anvil keys and credentials are development-only.
-- There has been no independent security audit.
+## Roadmap
 
-See [SECURITY.md](SECURITY.md) for reporting and [docs/SECURITY.md](docs/SECURITY.md) for the threat model.
+1. **Solana foundation (current):** Anchor PDAs, local dual-validator deployment, PostgreSQL schema, authenticated API, and Solana operations UI.
+2. **Contract hardening:** Anchor integration/property coverage, signer rotation review, replay/expiry/domain cases, adversarial accounts, and compute-budget review.
+3. **Durable scanner:** parse `MessageSent` logs, persist observations transactionally, and gate work on configured commitment.
+4. **Safe relayer:** Redis leases plus PostgreSQL source of truth, outbox dispatch, reorg reconciliation, simulation, blockhash-expiry tracking, and signature reconciliation without blind retry.
+5. **Operations:** populated routes, real-time dashboard data, Prometheus metrics, dashboards, backup/restore workflow, and release automation.
+6. **Portfolio polish:** capture real localnet screenshots and publish a validation report after the full stack is verified.
+
+## Repository layout
+
+```text
+programs/routerpulse/   Anchor program, accounts, instructions, events, errors
+backend/                Rust/Axum API, SQLx startup migrations, Dockerfile
+frontend/               React/TypeScript console, Nginx reverse proxy
+scripts/                local setup, deployment, smoke, and build workflows
+docs/                   architecture, API, operations, security, roadmap
+compose.yaml            two Solana validators, PostgreSQL, Redis, API, UI
+Anchor.toml             Anchor 0.30.1 and Solana 1.18.26 project configuration
+```
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
