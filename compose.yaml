@@ -1,0 +1,52 @@
+services:
+  source-anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: ["anvil"]
+    command: ["--host", "0.0.0.0", "--chain-id", "31337", "--block-time", "2"]
+    ports: ["8545:8545"]
+    healthcheck: {test: ["CMD", "cast", "chain-id", "--rpc-url", "http://127.0.0.1:8545"], interval: 5s, timeout: 3s, retries: 20}
+  destination-anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: ["anvil"]
+    command: ["--host", "0.0.0.0", "--chain-id", "31338", "--block-time", "2"]
+    ports: ["8546:8545"]
+    healthcheck: {test: ["CMD", "cast", "chain-id", "--rpc-url", "http://127.0.0.1:8545"], interval: 5s, timeout: 3s, retries: 20}
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-routerpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-routerpulse_local_only}
+      POSTGRES_DB: ${POSTGRES_DB:-routerpulse}
+    ports: ["5433:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data", "./backend/migrations:/docker-entrypoint-initdb.d:ro"]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"], interval: 5s, timeout: 3s, retries: 20}
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: ["redis_data:/data"]
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20}
+  api:
+    build: ./backend
+    environment:
+      API_KEY: ${API_KEY:-local-demo-key-change-me}
+      DATABASE_URL: postgres://${POSTGRES_USER:-routerpulse}:${POSTGRES_PASSWORD:-routerpulse_local_only}@db:5432/${POSTGRES_DB:-routerpulse}
+      REDIS_URL: redis://redis:6379
+      SOURCE_RPC_URL: http://source-anvil:8545
+      DESTINATION_RPC_URL: http://destination-anvil:8545
+      RUST_LOG: info
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      source-anvil: {condition: service_healthy}
+      destination-anvil: {condition: service_healthy}
+    ports: ["8080:8080"]
+    healthcheck: {test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/readyz"], interval: 10s, timeout: 3s, retries: 10}
+  web:
+    build: ./frontend
+    depends_on: [api]
+    ports: ["3000:80"]
+volumes:
+  postgres_data:
+  redis_data:
+
