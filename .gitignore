@@ -11,3 +11,5 @@ coverage/
 .DS_Store
 deployments/*.local.json
 
+
+frontend/tsconfig.tsbuildinfo
